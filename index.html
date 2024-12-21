@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服务器监控面板</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.2.31/vue.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.24.0/axios.min.js"></script>
+</head>
+<body :class="theme" class="bg-gray-100">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- 顶部工具栏 -->
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl sm:text-3xl font-bold" :class="{ 'text-gray-800': theme === 'light', 'text-green-400': theme === 'dark' }">
+                {{ translations[language].title }}
+            </h1>
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <button @click="toggleTheme" class="px-2 sm:px-4 py-1 sm:py-2 rounded text-white text-sm sm:text-base" :class="theme === 'light' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'">
+                    {{ translations[language].toggleTheme }}
+                </button>
+                <select v-model="language" class="px-2 sm:px-4 py-1 sm:py-2 rounded bg-gray-200 border border-gray-300 focus:outline-none text-sm sm:text-base" :class="theme === 'dark' ? 'bg-gray-700 text-green-400' : 'bg-gray-200 text-gray-800'">
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 状态概览 -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div class="bg-blue-500 text-white rounded-lg p-4 sm:p-6 text-center">
+                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].totalServers }}</h3>
+                <p class="text-2xl sm:text-3xl font-bold">{{ clients.length || 0 }}</p>
+            </div>
+            <div class="bg-green-500 text-white rounded-lg p-4 sm:p-6 text-center">
+                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].onlineServers }}</h3>
+                <p class="text-2xl sm:text-3xl font-bold">{{ onlineCount }}</p>
+            </div>
+            <div class="bg-red-500 text-white rounded-lg p-4 sm:p-6 text-center">
+                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].offlineServers }}</h3>
+                <p class="text-2xl sm:text-3xl font-bold">{{ offlineCount }}</p>
+            </div>
+        </div>
+
+        <!-- 服务器信息 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="client in clients" :key="client.id" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h2 class="text-sm sm:text-lg font-semibold" :class="{ 'text-gray-700': theme === 'light', 'text-green-400': theme === 'dark' }">
+                    {{ client.hostname }}
+                </h2>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].username }}: {{ client.username }}</p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].ipAddress }}: {{ client.ip }}</p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].cpuUsage }}: {{ client.cpu_percent }}%</p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].memoryUsage }}: {{ client.memory_percent }}%</p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].uploadSpeed }}: {{ formatSpeed(client.network_speed.upload) }}</p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].downloadSpeed }}: {{ formatSpeed(client.network_speed.download) }}</p>
+                <p class="text-xs sm:text-sm font-semibold mt-2" :class="getStatusClass(client.status)">{{ translations[language][client.status] }}</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ translations[language].lastUpdate }}: {{ client.last_update }}</p>
+            </div>
+        </div>
+
+        <div v-if="clients.length === 0" class="bg-white rounded-lg shadow p-6 text-center text-gray-500 dark:text-gray-400 mt-6">
+            {{ translations[language].noData }}
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    clients: [],
+                    error: null,
+                    language: 'zh',
+                    theme: 'light',
+                    translations: {
+                        en: {
+                            title: 'Server Monitor',
+                            toggleTheme: 'Toggle Theme',
+                            totalServers: 'Total Servers',
+                            onlineServers: 'Online Servers',
+                            offlineServers: 'Offline Servers',
+                            username: 'Username',
+                            ipAddress: 'IP Address',
+                            cpuUsage: 'CPU Usage',
+                            memoryUsage: 'Memory Usage',
+                            uploadSpeed: 'Upload Speed',
+                            downloadSpeed: 'Download Speed',
+                            Online: 'Online',
+                            Offline: 'Offline',
+                            lastUpdate: 'Last Update',
+                            noData: 'No server data available'
+                        },
+                        zh: {
+                            title: '服务器监控面板',
+                            toggleTheme: '切换主题',
+                            totalServers: '总服务器数',
+                            onlineServers: '在线服务器',
+                            offlineServers: '离线服务器',
+                            username: '用户名',
+                            ipAddress: 'IP地址',
+                            cpuUsage: 'CPU使用率',
+                            memoryUsage: '内存使用率',
+                            uploadSpeed: '上传速度',
+                            downloadSpeed: '下载速度',
+                            Online: '在线',
+                            Offline: '离线',
+                            lastUpdate: '最后更新',
+                            noData: '暂无服务器数据'
+                        }
+                    }
+                }
+            },
+            computed: {
+                onlineCount() {
+                    return this.clients.filter(c => c.status === 'Online').length || 0
+                },
+                offlineCount() {
+                    return this.clients.filter(c => c.status === 'Offline').length || 0
+                }
+            },
+            methods: {
+                async fetchData() {
+                    try {
+                        const response = await axios.get('/api/clients')
+                        this.clients = response.data || []
+                        this.error = null
+                    } catch (error) {
+                        console.error('Error fetching data:', error)
+                        this.error = '获取数据失败'
+                    }
+                },
+                formatSpeed(bytesPerSec) {
+                    if (!bytesPerSec && bytesPerSec !== 0) return '0 B/s'
+                    if (bytesPerSec >= 1024 * 1024) {
+                        return `${(bytesPerSec / (1024 * 1024)).toFixed(2)} MB/s`
+                    } else if (bytesPerSec >= 1024) {
+                        return `${(bytesPerSec / 1024).toFixed(2)} KB/s`
+                    }
+                    return `${bytesPerSec.toFixed(2)} B/s`
+                },
+                getStatusClass(status) {
+                    return status === 'Online' 
+                        ? 'text-green-600'
+                        : 'text-red-600'
+                },
+                toggleTheme() {
+                    this.theme = this.theme === 'light' ? 'dark' : 'light'
+                    document.body.className = this.theme === 'light' ? 'bg-gray-100' : 'bg-gray-900 text-white'
+                }
+            },
+            mounted() {
+                this.fetchData()
+                setInterval(this.fetchData, 5000)
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
