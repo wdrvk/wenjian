@@ -1,10 +1,48 @@
-
 #!/bin/bash
+set -e
+
+# 移除可能存在的Windows换行符
+clean_script() {
+    local tempfile=$(mktemp)
+    tr -d '\r' < "$0" > "$tempfile"
+    chmod +x "$tempfile"
+    exec "$tempfile"
+}
+
+# 如果检测到Windows换行符，则清理并重新执行
+if file "$0" | grep -q CRLF; then
+    clean_script
+fi
+
 # 介绍信息
 {
     echo -e "\e[92m" 
-    echo "一键安装Hysteria2脚本"
+    echo "通往电脑的路不止一条，所有的信息都应该是免费的，打破电脑特权，在电脑上创造艺术和美，计算机将使生活更美好。"
+    echo "    ______                   _____               _____         "
+    echo "    ___  /_ _____  ____________  /______ ___________(_)______ _"
+    echo "    __  __ \\__  / / /__  ___/_  __/_  _ \\__  ___/__  / _  __ \`/"
+    echo "    _  / / /_  /_/ / _(__  ) / /_  /  __/_  /    _  /  / /_/ / "
+    echo "    /_/ /_/ _\\__, /  /____/  \\__/  \\___/ /_/     /_/   \\__,_/  "
+    echo "            /____/                                              "
+    echo "                          ______          __________          "
+    echo "    ______________ __________  /_____________  ____/         "
+    echo "    __  ___/_  __ \\_  ___/__  //_/__  ___/______ \\           "
+    echo "    _(__  ) / /_/ // /__  _  ,<   _(__  )  ____/ /        不要直连"
+    echo "    /____/  \\____/ \\___/  /_/|_|  /____/  /_____/         没有售后"
+    echo "缝合怪：天诚 原作者们：cmliu RealNeoMan、k0baya、eooce"
+    echo "交流群:https://t.me/cncomorg"
     echo -e "\e[0m"  
+}
+
+# 检查必要的命令是否存在
+check_commands() {
+    local cmds=("curl" "openssl" "tr" "awk" "grep" "ip")
+    for cmd in "${cmds[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo "错误: 找不到命令 '$cmd'"
+            exit 1
+        fi
+    done
 }
 
 # 获取当前用户名
@@ -17,54 +55,56 @@ HYSTERIA_WORKDIR="$USER_HOME/.hysteria"
 
 # 随机生成密码函数
 generate_password() {
-  export PASSWORD=${PASSWORD:-$(openssl rand -base64 12)}
+    export PASSWORD=${PASSWORD:-$(openssl rand -base64 12)}
 }
 
 # 设置服务器端口函数
 set_server_port() {
-  read -p "请输入 hysteria2 端口 (面板开放的UDP端口,默认 20026）: " input_port
-  export SERVER_PORT="${input_port:-20026}"
+    read -p "请输入 hysteria2 端口 (面板开放的UDP端口,默认 20026）: " input_port
+    export SERVER_PORT="${input_port:-20026}"
 }
 
 # 下载依赖文件函数
 download_dependencies() {
-  ARCH=$(uname -m)
-  DOWNLOAD_DIR="$HYSTERIA_WORKDIR"
-  mkdir -p "$DOWNLOAD_DIR"
-  FILE_INFO=()
+    ARCH=$(uname -m)
+    DOWNLOAD_DIR="$HYSTERIA_WORKDIR"
+    mkdir -p "$DOWNLOAD_DIR"
+    FILE_INFO=()
 
-  if [[ "$ARCH" == "arm" || "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
-    FILE_INFO=("https://download.hysteria.network/app/latest/hysteria-freebsd-arm64 web" "https://github.com/eooce/test/releases/download/ARM/swith npm")
-  elif [[ "$ARCH" == "amd64" || "$ARCH" == "x86_64" || "$ARCH" == "x86" ]]; then
-    FILE_INFO=("https://download.hysteria.network/app/latest/hysteria-freebsd-amd64 web" "https://github.com/eooce/test/releases/download/freebsd/swith npm")
-  else
-    echo "不支持的架构: $ARCH"
-    exit 1
-  fi
-
-  for entry in "${FILE_INFO[@]}"; do
-    URL=$(echo "$entry" | cut -d ' ' -f 1)
-    NEW_FILENAME=$(echo "$entry" | cut -d ' ' -f 2)
-    FILENAME="$DOWNLOAD_DIR/$NEW_FILENAME"
-    if [[ -e "$FILENAME" ]]; then
-      echo -e "\e[1;32m$FILENAME 已存在，跳过下载\e[0m"
+    if [[ "$ARCH" == "arm" || "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+        FILE_INFO=("https://download.hysteria.network/app/latest/hysteria-freebsd-arm64 web" "https://github.com/eooce/test/releases/download/ARM/swith npm")
+    elif [[ "$ARCH" == "amd64" || "$ARCH" == "x86_64" || "$ARCH" == "x86" ]]; then
+        FILE_INFO=("https://download.hysteria.network/app/latest/hysteria-freebsd-amd64 web" "https://github.com/eooce/test/releases/download/freebsd/swith npm")
     else
-      curl -L -sS -o "$FILENAME" "$URL"
-      echo -e "\e[1;32m下载 $FILENAME\e[0m"
+        echo "不支持的架构: $ARCH"
+        exit 1
     fi
-    chmod +x "$FILENAME"
-  done
-  wait
+
+    for entry in "${FILE_INFO[@]}"; do
+        URL=$(echo "$entry" | cut -d ' ' -f 1)
+        NEW_FILENAME=$(echo "$entry" | cut -d ' ' -f 2)
+        FILENAME="$DOWNLOAD_DIR/$NEW_FILENAME"
+        if [[ -e "$FILENAME" ]]; then
+            echo -e "\e[1;32m$FILENAME 已存在，跳过下载\e[0m"
+        else
+            if ! curl -L -sS -o "$FILENAME" "$URL"; then
+                echo "下载失败: $URL"
+                exit 1
+            fi
+            echo -e "\e[1;32m下载 $FILENAME\e[0m"
+        fi
+        chmod +x "$FILENAME"
+    done
 }
 
 # 生成证书函数
 generate_cert() {
-  openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) -keyout "$HYSTERIA_WORKDIR/server.key" -out "$HYSTERIA_WORKDIR/server.crt" -subj "/CN=bing.com" -days 36500
+    openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) -keyout "$HYSTERIA_WORKDIR/server.key" -out "$HYSTERIA_WORKDIR/server.crt" -subj "/CN=bing.com" -days 36500
 }
 
 # 生成配置文件函数
 generate_config() {
-  cat << EOF > "$HYSTERIA_WORKDIR/config.yaml"
+    cat << EOF > "$HYSTERIA_WORKDIR/config.yaml"
 listen: :$SERVER_PORT
 
 tls:
@@ -91,11 +131,16 @@ EOF
 
 # 运行下载的文件函数
 run_files() {
-  if [[ -e "$HYSTERIA_WORKDIR/web" ]]; then
-    nohup "$HYSTERIA_WORKDIR/web" server "$HYSTERIA_WORKDIR/config.yaml" >/dev/null 2>&1 &
-    sleep 1
-    echo -e "\e[1;32mweb 正在运行\e[0m"
-  fi
+    if [[ -e "$HYSTERIA_WORKDIR/web" ]]; then
+        nohup "$HYSTERIA_WORKDIR/web" server "$HYSTERIA_WORKDIR/config.yaml" >/dev/null 2>&1 &
+        sleep 1
+        if pgrep -f "$HYSTERIA_WORKDIR/web" >/dev/null; then
+            echo -e "\e[1;32mweb 正在运行\e[0m"
+        else
+            echo -e "\e[1;31mweb 启动失败\e[0m"
+            exit 1
+        fi
+    fi
 }
 
 # 测试IP是否可访问谷歌函数
@@ -170,21 +215,21 @@ get_ip() {
 
 # 获取网络信息函数
 get_ipinfo() {
-  ISP=$(curl -s https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18}' | sed -e 's/ /_/g')
+    ISP=$(curl -s https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18}' | sed -e 's/ /_/g')
 }
 
 # 输出配置函数
 print_config() {
-  echo -e "\e[1;32mHysteria2 安装成功\033[0m"
-  echo ""
-  echo -e "\e[1;33mV2rayN或Nekobox 配置\033[0m"
-  echo -e "\e[1;32mhysteria2://$PASSWORD@$HOST_IP:$SERVER_PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP\033[0m"
-  echo ""
-  echo -e "\e[1;33mSurge 配置\033[0m"
-  echo -e "\e[1;32m$ISP = hysteria2, $HOST_IP, $SERVER_PORT, password = $PASSWORD, skip-cert-verify=true, sni=www.bing.com\033[0m"
-  echo ""
-  echo -e "\e[1;33mClash 配置\033[0m"
-  cat << EOF
+    echo -e "\e[1;32mHysteria2 安装成功\033[0m"
+    echo ""
+    echo -e "\e[1;33mV2rayN或Nekobox 配置\033[0m"
+    echo -e "\e[1;32mhysteria2://$PASSWORD@$HOST_IP:$SERVER_PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP\033[0m"
+    echo ""
+    echo -e "\e[1;33mSurge 配置\033[0m"
+    echo -e "\e[1;32m$ISP = hysteria2, $HOST_IP, $SERVER_PORT, password = $PASSWORD, skip-cert-verify=true, sni=www.bing.com\033[0m"
+    echo ""
+    echo -e "\e[1;33mClash 配置\033[0m"
+    cat << EOF
 - name: $ISP
   type: hysteria2
   server: $HOST_IP
@@ -198,23 +243,22 @@ print_config() {
 EOF
 }
 
-# 删除临时文件函数
-cleanup() {
-  rm -rf "$HYSTERIA_WORKDIR/web" "$HYSTERIA_WORKDIR/config.yaml"
-}
-
-# 安装 Hysteria
-install_hysteria() {
-  generate_password
-  set_server_port
-  download_dependencies
-  generate_cert
-  generate_config
-  run_files
-  get_ip
-  get_ipinfo
-  print_config
-}
-
 # 主程序
-install_hysteria
+main() {
+    # 检查必要的命令
+    check_commands
+    
+    # 安装 Hysteria
+    generate_password
+    set_server_port
+    download_dependencies
+    generate_cert
+    generate_config
+    run_files
+    get_ip
+    get_ipinfo
+    print_config
+}
+
+# 运行主程序
+main
