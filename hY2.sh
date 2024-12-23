@@ -1,60 +1,21 @@
-#!/bin/bash
-# 介绍信息
-{
-    echo -e "\e[92m" 
-    echo "通往电脑的路不止一条，所有的信息都应该是免费的，打破电脑特权，在电脑上创造艺术和美，计算机将使生活更美好。"
-    echo "    ______                   _____               _____         "
-    echo "    ___  /_ _____  ____________  /______ ___________(_)______ _"
-    echo "    __  __ \\__  / / /__  ___/_  __/_  _ \\__  ___/__  / _  __ \`/"
-    echo "    _  / / /_  /_/ / _(__  ) / /_  /  __/_  /    _  /  / /_/ / "
-    echo "    /_/ /_/ _\\__, /  /____/  \\__/  \\___/ /_/     /_/   \\__,_/  "
-    echo "            /____/                                              "
-    echo "                          ______          __________          "
-    echo "    ______________ __________  /_____________  ____/         "
-    echo "    __  ___/_  __ \\_  ___/__  //_/__  ___/______ \\           "
-    echo "    _(__  ) / /_/ // /__  _  ,<   _(__  )  ____/ /        不要直连"
-    echo "    /____/  \\____/ \\___/  /_/|_|  /____/  /_____/         没有售后"
-    echo "缝合怪：天诚 原作者们：cmliu RealNeoMan、k0baya、eooce"
-    echo "交流群:https://t.me/cncomorg"
-    echo -e "\e[0m"  
-}
 
+#!/bin/bash
 # 获取当前用户名
 USER=$(whoami)
-USER_HOME=$(eval echo ~$USER) # 更可靠的获取用户主目录方式
+USER_HOME=$(eval echo ~$USER)
 HYSTERIA_WORKDIR="$USER_HOME/.hysteria"
 
 # 检查系统环境
 check_system() {
-    # 检查操作系统
-    if [[ "$(uname)" == "Linux" ]]; then
-        OS="linux"
-    elif [[ "$(uname)" == "FreeBSD" ]]; then
-        OS="freebsd"
-    else
-        echo "不支持的操作系统: $(uname)"
-        exit 1
-    fi
-
     # 检查CPU架构
     case $(uname -m) in
-        x86_64)  ARCH="amd64" ;;
-        amd64)   ARCH="amd64" ;;
-        arm64)   ARCH="arm64" ;;
-        aarch64) ARCH="arm64" ;;
+        x86_64|amd64)   ARCH="amd64" ;;
+        arm64|aarch64)  ARCH="arm64" ;;
         *)
             echo "不支持的架构: $(uname -m)"
             exit 1
             ;;
     esac
-
-    # 检查必要命令
-    for cmd in curl openssl; do
-        if ! command -v $cmd >/dev/null 2>&1; then
-            echo "错误: $cmd 未安装"
-            exit 1
-        fi
-    done
 }
 
 # 创建必要的目录
@@ -80,20 +41,18 @@ set_server_port() {
 
 # 下载依赖文件函数
 download_dependencies() {
-    local BINARY_URL="https://download.hysteria.network/app/latest/hysteria-${OS}-${ARCH}"
+    local BINARY_URL="https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-$ARCH"
     local BINARY_PATH="$HYSTERIA_WORKDIR/web"
 
     echo "准备下载 Hysteria2..."
-    if [ -f "$BINARY_PATH" ]; then
-        echo -e "\e[1;32m$BINARY_PATH 已存在，跳过下载\e[0m"
-    else
-        echo "下载 Hysteria2 从 $BINARY_URL"
-        if ! curl -L -o "$BINARY_PATH" "$BINARY_URL"; then
-            echo "下载失败!"
-            exit 1
-        fi
+    echo "下载地址: $BINARY_URL"
+    
+    if curl -L -o "$BINARY_PATH" "$BINARY_URL"; then
         chmod +x "$BINARY_PATH"
         echo -e "\e[1;32m下载完成\e[0m"
+    else
+        echo "下载失败!"
+        exit 1
     fi
 }
 
@@ -114,6 +73,7 @@ generate_cert() {
         echo "证书生成失败!"
         exit 1
     fi
+    chmod 644 "$CERT" "$KEY"
     echo "证书生成成功"
 }
 
@@ -130,8 +90,6 @@ auth:
   type: password
   password: "$PASSWORD"
 
-fastOpen: true
-
 masquerade:
   type: proxy
   proxy:
@@ -142,28 +100,34 @@ transport:
   udp:
     hopInterval: 30s
 EOF
+    chmod 644 "$HYSTERIA_WORKDIR/config.yaml"
 }
 
 # 运行服务函数
 run_service() {
-    if [ -f "$HYSTERIA_WORKDIR/web" ]; then
-        # 先停止已有实例
-        pkill -f "web server"
-        sleep 1
-        
-        # 启动新实例
-        nohup "$HYSTERIA_WORKDIR/web" server "$HYSTERIA_WORKDIR/config.yaml" >/dev/null 2>&1 &
-        sleep 2
-        
-        # 检查是否成功启动
-        if pgrep -f "web server" >/dev/null; then
-            echo -e "\e[1;32mHysteria2 服务启动成功\e[0m"
-        else
-            echo -e "\e[1;31mHysteria2 服务启动失败\e[0m"
-            exit 1
-        fi
-    else
+    if [ ! -f "$HYSTERIA_WORKDIR/web" ]; then
         echo "错误: hysteria2 程序文件不存在"
+        exit 1
+    fi
+
+    # 先停止已有实例
+    pkill -f "web server"
+    sleep 2
+
+    # 启动新实例并保存日志
+    cd "$HYSTERIA_WORKDIR"
+    nohup ./web server config.yaml > hysteria.log 2>&1 &
+    
+    # 等待服务启动
+    sleep 3
+    
+    # 检查服务状态
+    if pgrep -f "web server" >/dev/null; then
+        echo -e "\e[1;32mHysteria2 服务启动成功\e[0m"
+    else
+        echo -e "\e[1;31mHysteria2 服务启动失败\e[0m"
+        echo "查看错误日志:"
+        tail -n 20 "$HYSTERIA_WORKDIR/hysteria.log"
         exit 1
     fi
 }
@@ -171,32 +135,50 @@ run_service() {
 # 获取IP地址函数
 get_ip() {
     # 先尝试获取IPv4
-    local ipv4=$(curl -s --max-time 10 4.ipw.cn)
-    if [ -n "$ipv4" ]; then
-        HOST_IP="$ipv4"
-    else
+    HOST_IP=$(curl -s4 ip.sb || curl -s4 ifconfig.me || curl -s4 ipinfo.io/ip)
+    if [ -z "$HOST_IP" ]; then
         # 如果IPv4失败，尝试IPv6
-        local ipv6=$(curl -s --max-time 10 6.ipw.cn)
-        if [ -n "$ipv6" ]; then
-            HOST_IP="$ipv6"
-        else
-            echo -e "\e[1;31m无法获取IP地址\e[0m"
-            exit 1
-        fi
+        HOST_IP=$(curl -s6 ip.sb || curl -s6 ifconfig.me || curl -s6 ipinfo.io/ip)
     fi
+    
+    if [ -z "$HOST_IP" ]; then
+        echo -e "\e[1;31m无法获取IP地址\e[0m"
+        exit 1
+    fi
+    
     echo -e "\e[1;32m本机IP: $HOST_IP\e[0m"
 }
 
 # 获取网络信息函数
 get_ipinfo() {
-    ISP=$(curl -s --max-time 10 https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18}' | sed -e 's/ /_/g')
+    ISP=$(curl -s https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18}' | sed -e 's/ /_/g')
     if [ -z "$ISP" ]; then
         ISP="Unknown"
     fi
 }
 
+# 添加守护进程函数
+add_crontab_task() {
+    # 备份现有的crontab
+    crontab -l > /tmp/crontab.bak 2>/dev/null
+    
+    # 添加新的定时任务
+    echo "*/1 * * * * cd $HYSTERIA_WORKDIR && if ! pgrep -f 'web server' >/dev/null; then ./web server config.yaml > hysteria.log 2>&1 & fi" >> /tmp/crontab.bak
+    
+    # 应用新的crontab
+    crontab /tmp/crontab.bak
+    rm -f /tmp/crontab.bak
+    
+    echo -e "\e[1;32m守护进程配置完成\e[0m"
+}
+
 # 输出配置函数
 print_config() {
+    if [ ! -f "$HYSTERIA_WORKDIR/config.yaml" ]; then
+        echo "配置文件不存在！"
+        exit 1
+    fi
+    
     echo -e "\e[1;32mHysteria2 安装成功\033[0m"
     echo ""
     echo -e "\e[1;33mV2rayN或Nekobox 配置\033[0m"
@@ -218,22 +200,6 @@ print_config() {
   skip-cert-verify: true
   fast-open: true
 EOF
-}
-
-# 添加守护进程函数
-add_crontab_task() {
-    # 备份现有的crontab
-    crontab -l > /tmp/crontab.bak 2>/dev/null
-    
-    # 添加新的定时任务，先删除已存在的相同任务
-    sed -i '/web server/d' /tmp/crontab.bak
-    echo "*/1 * * * * if ! pgrep -f 'web server' >/dev/null; then cd $HYSTERIA_WORKDIR && nohup ./web server config.yaml >/dev/null 2>&1 & fi" >> /tmp/crontab.bak
-    
-    # 应用新的crontab
-    crontab /tmp/crontab.bak
-    rm -f /tmp/crontab.bak
-    
-    echo -e "\e[1;32m守护进程配置完成\e[0m"
 }
 
 # 主程序
