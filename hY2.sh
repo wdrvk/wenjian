@@ -99,31 +99,21 @@ run_files() {
   fi
 }
 
+
 # 获取IP地址函数
 get_all_ips() {
     local ips=()
-    
-    # 使用 netstat 替代 ifconfig，因为它通常不需要 root 权限
-    local local_ips=$(netstat -in | awk '/^[a-z]/ { if($4 != "0.0.0.0") print $4 }')
-    
-    # 获取本地IP
-    for ip in $local_ips; do
-        if ! is_private_ip "$ip"; then
-            ips+=("$ip")
-        fi
-    done
     
     # 从多个外部服务获取IP
     local ext_services=(
         "https://4.ipw.cn"
         "https://ipv4.icanhazip.com"
         "https://api4.ipify.org"
-        "https://v4.ident.me"
     )
     
     for service in "${ext_services[@]}"; do
         local ext_ip=$(fetch -qo - "$service" 2>/dev/null)
-        if [[ -n "$ext_ip" ]] && ! is_private_ip "$ext_ip"; then
+        if [[ -n "$ext_ip" ]] && ! is_invalid_ip "$ext_ip"; then
             ips+=("$ext_ip")
         fi
     done
@@ -132,12 +122,11 @@ get_all_ips() {
     local ext_ipv6_services=(
         "https://6.ipw.cn"
         "https://ipv6.icanhazip.com"
-        "https://api6.ipify.org"
     )
     
     for service in "${ext_ipv6_services[@]}"; do
         local ext_ipv6=$(fetch -qo - "$service" 2>/dev/null)
-        if [[ -n "$ext_ipv6" ]] && [[ $ext_ipv6 != fe80:* ]]; then
+        if [[ -n "$ext_ipv6" ]] && ! is_invalid_ipv6 "$ext_ipv6"; then
             ips+=("$ext_ipv6")
         fi
     done
@@ -146,21 +135,47 @@ get_all_ips() {
     printf '%s\n' "${ips[@]}" | sort -u
 }
 
-# 检查是否是内网IP
-is_private_ip() {
+# 检查是否是无效IP（包括内网IP）
+is_invalid_ip() {
     local ip=$1
     local ip_parts
     IFS='.' read -ra ip_parts <<< "$ip"
     
-    # 检查IP格式是否正确
-    [[ ${#ip_parts[@]} -ne 4 ]] && return 1
+    # 检查IPv4格式是否正确
+    [[ ${#ip_parts[@]} -ne 4 ]] && return 0
     
-    # 检查是否是私有IP范围
-    if [[ ${ip_parts[0]} -eq 10 ]] || \
-       [[ ${ip_parts[0]} -eq 172 && ${ip_parts[1]} -ge 16 && ${ip_parts[1]} -le 31 ]] || \
-       [[ ${ip_parts[0]} -eq 192 && ${ip_parts[1]} -eq 168 ]]; then
-        return 0
-    fi
+    # 检查每个部分是否为有效数字
+    for part in "${ip_parts[@]}"; do
+        [[ ! $part =~ ^[0-9]+$ ]] && return 0
+        [[ $part -lt 0 || $part -gt 255 ]] && return 0
+    done
+    
+    # 检查保留地址和特殊地址
+    [[ ${ip_parts[0]} -eq 0 ]] && return 0  # 0.0.0.0/8
+    [[ ${ip_parts[0]} -eq 10 ]] && return 0  # 10.0.0.0/8
+    [[ ${ip_parts[0]} -eq 127 ]] && return 0  # 127.0.0.0/8
+    [[ ${ip_parts[0]} -eq 169 && ${ip_parts[1]} -eq 254 ]] && return 0  # 169.254.0.0/16
+    [[ ${ip_parts[0]} -eq 172 && ${ip_parts[1]} -ge 16 && ${ip_parts[1]} -le 31 ]] && return 0  # 172.16.0.0/12
+    [[ ${ip_parts[0]} -eq 192 && ${ip_parts[1]} -eq 168 ]] && return 0  # 192.168.0.0/16
+    [[ ${ip_parts[0]} -eq 224 ]] && return 0  # 224.0.0.0/4
+    
+    return 1
+}
+
+# 检查是否是无效IPv6
+is_invalid_ipv6() {
+    local ip=$1
+    
+    # 检查是否是保留地址或特殊地址
+    [[ $ip == fe80:* ]] && return 0  # 链路本地地址
+    [[ $ip == fc00:* ]] && return 0  # 唯一本地地址
+    [[ $ip == fd00:* ]] && return 0  # 唯一本地地址
+    [[ $ip == ::1 ]] && return 0     # 本地回环
+    [[ $ip == ::* ]] && return 0     # 未指定地址
+    [[ $ip == *::%* ]] && return 0   # 带有区域标识的地址
+    [[ $ip == fc:* ]] && return 0    # 无效的MAC地址格式
+    [[ $ip == lo* ]] && return 0     # 本地接口名称
+    
     return 1
 }
 
@@ -190,12 +205,14 @@ get_best_ip() {
     
     # 获取所有外网IP
     while IFS= read -r ip; do
-        echo -e "\e[1;37m检测IP: $ip\e[0m"
-        if test_ip_connectivity "$ip"; then
-            echo -e "\e[1;32m✓ IP $ip 可用\e[0m"
-            available_ips+=("$ip")
-        else
-            echo -e "\e[1;31m✗ IP $ip 不可用\e[0m"
+        if [[ -n "$ip" ]]; then
+            echo -e "\e[1;37m检测IP: $ip\e[0m"
+            if test_ip_connectivity "$ip"; then
+                echo -e "\e[1;32m✓ IP $ip 可用\e[0m"
+                available_ips+=("$ip")
+            else
+                echo -e "\e[1;31m✗ IP $ip 不可用\e[0m"
+            fi
         fi
     done < <(get_all_ips)
     
@@ -214,7 +231,6 @@ get_best_ip() {
 get_ip() {
     get_best_ip
 }
-
 
 # 获取网络信息函数
 get_ipinfo() {
