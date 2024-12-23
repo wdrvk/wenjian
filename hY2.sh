@@ -103,38 +103,44 @@ run_files() {
 get_all_ips() {
     local ips=()
     
-    # 获取所有网卡的IPv4和IPv6地址
-    for iface in $(ifconfig -l); do
-        # 获取IPv4地址
-        local ipv4s=$(ifconfig "$iface" | grep 'inet ' | awk '{print $2}')
-        # 获取IPv6地址
-        local ipv6s=$(ifconfig "$iface" | grep 'inet6 ' | awk '{print $2}' | grep -v '^fe80:')
-        
-        # 排除内网IP
-        for ip in $ipv4s; do
-            if ! is_private_ip "$ip"; then
-                ips+=("$ip")
-            fi
-        done
-        
-        # 添加非链路本地IPv6地址
-        for ip in $ipv6s; do
-            if [[ $ip != fe80:* ]]; then
-                ips+=("$ip")
-            fi
-        done
+    # 使用 netstat 替代 ifconfig，因为它通常不需要 root 权限
+    local local_ips=$(netstat -in | awk '/^[a-z]/ { if($4 != "0.0.0.0") print $4 }')
+    
+    # 获取本地IP
+    for ip in $local_ips; do
+        if ! is_private_ip "$ip"; then
+            ips+=("$ip")
+        fi
     done
     
-    # 尝试从外部服务获取IP
-    local ext_ipv4=$(fetch -qo - https://4.ipw.cn 2>/dev/null)
-    if [[ -n "$ext_ipv4" ]]; then
-        ips+=("$ext_ipv4")
-    fi
+    # 从多个外部服务获取IP
+    local ext_services=(
+        "https://4.ipw.cn"
+        "https://ipv4.icanhazip.com"
+        "https://api4.ipify.org"
+        "https://v4.ident.me"
+    )
     
-    local ext_ipv6=$(fetch -qo - https://6.ipw.cn 2>/dev/null)
-    if [[ -n "$ext_ipv6" ]]; then
-        ips+=("$ext_ipv6")
-    fi
+    for service in "${ext_services[@]}"; do
+        local ext_ip=$(fetch -qo - "$service" 2>/dev/null)
+        if [[ -n "$ext_ip" ]] && ! is_private_ip "$ext_ip"; then
+            ips+=("$ext_ip")
+        fi
+    done
+    
+    # IPv6 检测
+    local ext_ipv6_services=(
+        "https://6.ipw.cn"
+        "https://ipv6.icanhazip.com"
+        "https://api6.ipify.org"
+    )
+    
+    for service in "${ext_ipv6_services[@]}"; do
+        local ext_ipv6=$(fetch -qo - "$service" 2>/dev/null)
+        if [[ -n "$ext_ipv6" ]] && [[ $ext_ipv6 != fe80:* ]]; then
+            ips+=("$ext_ipv6")
+        fi
+    done
     
     # 删除重复项并返回结果
     printf '%s\n' "${ips[@]}" | sort -u
@@ -145,6 +151,9 @@ is_private_ip() {
     local ip=$1
     local ip_parts
     IFS='.' read -ra ip_parts <<< "$ip"
+    
+    # 检查IP格式是否正确
+    [[ ${#ip_parts[@]} -ne 4 ]] && return 1
     
     # 检查是否是私有IP范围
     if [[ ${ip_parts[0]} -eq 10 ]] || \
@@ -175,28 +184,28 @@ test_ip_connectivity() {
 
 # 主要的IP检测和选择函数
 get_best_ip() {
-    echo "正在检测可用的IP地址..."
+    echo -e "\e[1;34m正在检测可用的IP地址...\e[0m"
     local available_ips=()
     local selected_ip=""
     
     # 获取所有外网IP
     while IFS= read -r ip; do
-        echo "检测IP: $ip"
+        echo -e "\e[1;37m检测IP: $ip\e[0m"
         if test_ip_connectivity "$ip"; then
-            echo "✓ IP $ip 可用"
+            echo -e "\e[1;32m✓ IP $ip 可用\e[0m"
             available_ips+=("$ip")
         else
-            echo "✗ IP $ip 不可用"
+            echo -e "\e[1;31m✗ IP $ip 不可用\e[0m"
         fi
     done < <(get_all_ips)
     
     # 如果有可用IP，选择第一个
     if [[ ${#available_ips[@]} -gt 0 ]]; then
         selected_ip="${available_ips[0]}"
-        echo -e "\e[1;32m选择可用IP: $selected_ip\033[0m"
+        echo -e "\e[1;32m选择可用IP: $selected_ip\e[0m"
         HOST_IP="$selected_ip"
     else
-        echo -e "\e[1;31m未找到可用的IP地址\033[0m"
+        echo -e "\e[1;31m未找到可用的IP地址\e[0m"
         exit 1
     fi
 }
@@ -205,7 +214,6 @@ get_best_ip() {
 get_ip() {
     get_best_ip
 }
-# 获取IP地址函数
 
 
 # 获取网络信息函数
