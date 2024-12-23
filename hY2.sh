@@ -157,9 +157,13 @@ print_config() {
 EOF
 }
 
-# 删除临时文件函数
-cleanup() {
-  rm -rf "$HYSTERIA_WORKDIR/web" "$HYSTERIA_WORKDIR/config.yaml"
+# 添加守护进程函数
+add_crontab_task() {
+  crontab -l > /tmp/crontab.bak
+  echo "*/12 * * * * if ! pgrep -x web; then nohup $HYSTERIA_WORKDIR/web server $HYSTERIA_WORKDIR/config.yaml >/dev/null 2>&1 & fi" >> /tmp/crontab.bak
+  crontab /tmp/crontab.bak
+  rm /tmp/crontab.bak
+  echo -e "\e[1;32mCrontab 守护进程添加完成\e[0m"
 }
 
 # 安装 Hysteria
@@ -177,3 +181,6 @@ install_hysteria() {
 
 # 主程序
 install_hysteria
+add_crontab_task
+
+echo -e "\e[1;32m安装和配置完成！\e[0m"
