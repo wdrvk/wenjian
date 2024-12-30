@@ -1,5 +1,7 @@
+
 <!DOCTYPE html>
 <html lang="zh">
+<!-- ... head 部分和样式保持不变 ... -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,19 +9,73 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.2.31/vue.global.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.24.0/axios.min.js"></script>
+    <style>
+        /* ... 原有的样式保持不变 ... */
+        body {
+            background: url('https://api.r10086.com/樱道随机图片api接口.php?图片系列=动漫综合2') no-repeat center center fixed;
+            background-size: cover;
+        }
+        .bg-blur {
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        .dark .bg-blur {
+            background-color: rgba(31, 41, 55, 0.8);
+        }
+        .server-card {
+            transition: all 0.3s ease-in-out;
+        }
+        .server-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+        .server-card.online {
+            border-left: 4px solid #10B981;
+        }
+        .server-card.offline {
+            border-left: 4px solid #EF4444;
+        }
+        .status-grid {
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+        .dark .status-grid {
+            background-color: rgba(31, 41, 55, 0.9);
+        }
+        .progress-bar {
+            height: 4px;
+            border-radius: 2px;
+            background-color: #f3f4f6;
+            overflow: hidden;
+            margin-top: 2px;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .progress-green {
+            background-color: #10B981;
+        }
+        .progress-yellow {
+            background-color: #F59E0B;
+        }
+        .progress-red {
+            background-color: #EF4444;
+        }
+    </style>
 </head>
-<body :class="theme" class="bg-gray-100">
-    <div id="app" class="container mx-auto px-4 py-8">
+<body :class="theme">
+    <!-- ... body 部分的 HTML 保持不变 ... -->
+    <div id="app" class="container mx-auto px-4 py-6">
         <!-- 顶部工具栏 -->
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl sm:text-3xl font-bold" :class="{ 'text-gray-800': theme === 'light', 'text-green-400': theme === 'dark' }">
+        <div class="flex justify-between items-center mb-4 bg-blur rounded-lg p-3">
+            <h1 class="text-xl sm:text-2xl font-bold" :class="{ 'text-gray-800': theme === 'light', 'text-green-400': theme === 'dark' }">
                 {{ translations[language].title }}
             </h1>
-            <div class="flex items-center space-x-2 sm:space-x-4">
-                <button @click="toggleTheme" class="px-2 sm:px-4 py-1 sm:py-2 rounded text-white text-sm sm:text-base" :class="theme === 'light' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'">
+            <div class="flex items-center space-x-2">
+                <button @click="toggleTheme" class="px-3 py-1 rounded text-white text-sm" :class="theme === 'light' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'">
                     {{ translations[language].toggleTheme }}
                 </button>
-                <select v-model="language" class="px-2 sm:px-4 py-1 sm:py-2 rounded bg-gray-200 border border-gray-300 focus:outline-none text-sm sm:text-base" :class="theme === 'dark' ? 'bg-gray-700 text-green-400' : 'bg-gray-200 text-gray-800'">
+                <select v-model="language" class="px-2 py-1 rounded border focus:outline-none text-sm" :class="theme === 'dark' ? 'bg-gray-700 text-green-400' : 'bg-gray-200 text-gray-800'">
                     <option value="en">English</option>
                     <option value="zh">中文</option>
                 </select>
@@ -27,39 +83,85 @@
         </div>
 
         <!-- 状态概览 -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-            <div class="bg-blue-500 text-white rounded-lg p-4 sm:p-6 text-center">
-                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].totalServers }}</h3>
-                <p class="text-2xl sm:text-3xl font-bold">{{ clients.length || 0 }}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div @click="setStatusFilter(null)" 
+                class="bg-blue-500 bg-opacity-90 text-white rounded-lg p-3 text-center cursor-pointer hover:bg-blue-600 transition-colors">
+                <h3 class="text-sm font-semibold">{{ translations[language].totalServers }}</h3>
+                <p class="text-2xl font-bold">{{ totalServers }}</p>
             </div>
-            <div class="bg-green-500 text-white rounded-lg p-4 sm:p-6 text-center">
-                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].onlineServers }}</h3>
-                <p class="text-2xl sm:text-3xl font-bold">{{ onlineCount }}</p>
+            <div @click="setStatusFilter('Online')" 
+                class="bg-green-500 bg-opacity-90 text-white rounded-lg p-3 text-center cursor-pointer hover:bg-green-600 transition-colors">
+                <h3 class="text-sm font-semibold">{{ translations[language].onlineServers }}</h3>
+                <p class="text-2xl font-bold">{{ onlineCount }}</p>
             </div>
-            <div class="bg-red-500 text-white rounded-lg p-4 sm:p-6 text-center">
-                <h3 class="text-sm sm:text-lg font-semibold mb-1 sm:mb-2">{{ translations[language].offlineServers }}</h3>
-                <p class="text-2xl sm:text-3xl font-bold">{{ offlineCount }}</p>
+            <div @click="setStatusFilter('Offline')" 
+                class="bg-red-500 bg-opacity-90 text-white rounded-lg p-3 text-center cursor-pointer hover:bg-red-600 transition-colors">
+                <h3 class="text-sm font-semibold">{{ translations[language].offlineServers }}</h3>
+                <p class="text-2xl font-bold">{{ offlineCount }}</p>
             </div>
         </div>
 
         <!-- 服务器信息 -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div v-for="client in clients" :key="client.id" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                <h2 class="text-sm sm:text-lg font-semibold" :class="{ 'text-gray-700': theme === 'light', 'text-green-400': theme === 'dark' }">
-                    {{ client.hostname }}
-                </h2>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].username }}: {{ client.username }}</p>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].ipAddress }}: {{ client.ip }}</p>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].cpuUsage }}: {{ client.cpu_percent }}%</p>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].memoryUsage }}: {{ client.memory_percent }}%</p>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].uploadSpeed }}: {{ formatSpeed(client.network_speed.upload) }}</p>
-                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ translations[language].downloadSpeed }}: {{ formatSpeed(client.network_speed.download) }}</p>
-                <p class="text-xs sm:text-sm font-semibold mt-2" :class="getStatusClass(client.status)">{{ translations[language][client.status] }}</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ translations[language].lastUpdate }}: {{ client.last_update }}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div v-for="client in filteredClients" 
+                :key="client.hostname" 
+                class="server-card bg-blur rounded-lg shadow-sm p-3"
+                :class="{'online': client.status === 'Online', 'offline': client.status === 'Offline'}">
+                <div class="flex justify-between items-start mb-2">
+                    <h2 class="text-base font-semibold" :class="{ 'text-gray-700': theme === 'light', 'text-green-400': theme === 'dark' }">
+                        {{ client.description || client.hostname }}
+                    </h2>
+                    <span class="text-xs font-semibold px-2 py-1 rounded-full" 
+                          :class="client.status === 'Online' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                        {{ translations[language][client.status] }}
+                    </span>
+                </div>
+                <div v-if="client.status === 'Online'" class="grid grid-cols-2 gap-2 text-xs">
+                    <p class="text-gray-500 dark:text-gray-400">
+                        <span class="font-medium">{{ translations[language].username }}:</span> {{ client.decoratedUsername }}
+                    </p>
+                    <p class="text-gray-500 dark:text-gray-400">
+                        <span class="font-medium">{{ translations[language].ipAddress }}:</span> {{ client.ip }}
+                    </p>
+                    <div class="text-gray-500 dark:text-gray-400">
+                        <p>
+                            <span class="font-medium">{{ translations[language].cpuUsage }}:</span> {{ client.cpu_percent }}%
+                        </p>
+                        <div class="progress-bar">
+                            <div class="progress-bar-fill" 
+                                 :class="getProgressBarColor(client.cpu_percent)"
+                                 :style="{ width: client.cpu_percent + '%' }">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-gray-500 dark:text-gray-400">
+                        <p>
+                            <span class="font-medium">{{ translations[language].memoryUsage }}:</span> {{ client.memory_percent }}%
+                        </p>
+                        <div class="progress-bar">
+                            <div class="progress-bar-fill"
+                                 :class="getProgressBarColor(client.memory_percent)"
+                                 :style="{ width: client.memory_percent + '%' }">
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-gray-500 dark:text-gray-400">
+                        <span class="font-medium">{{ translations[language].uploadSpeed }}:</span> {{ formatSpeed(client.network_speed.upload) }}
+                    </p>
+                    <p class="text-gray-500 dark:text-gray-400">
+                        <span class="font-medium">{{ translations[language].downloadSpeed }}:</span> {{ formatSpeed(client.network_speed.download) }}
+                    </p>
+                </div>
+                <div v-else class="text-xs">
+                    <p class="text-gray-500 dark:text-gray-400 mb-1">
+                        <span class="font-medium">{{ translations[language].username }}:</span> {{ client.decoratedUsername }}
+                    </p>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">{{ translations[language].lastUpdate }}: {{ client.last_update }}</p>
             </div>
         </div>
 
-        <div v-if="clients.length === 0" class="bg-white rounded-lg shadow p-6 text-center text-gray-500 dark:text-gray-400 mt-6">
+        <div v-if="filteredClients.length === 0" class="bg-blur rounded-lg shadow p-4 text-center text-gray-500 dark:text-gray-400 mt-4">
             {{ translations[language].noData }}
         </div>
     </div>
@@ -74,45 +176,52 @@
                     error: null,
                     language: 'zh',
                     theme: 'light',
+                    statusFilter: null,
+                    totalServers: 0,
+                    userNameDecorations: new Map(),
                     translations: {
                         en: {
                             title: 'Server Monitor',
-                            toggleTheme: 'Toggle Theme',
+                            toggleTheme: 'Theme',
                             totalServers: 'Total Servers',
                             onlineServers: 'Online Servers',
                             offlineServers: 'Offline Servers',
-                            username: 'Username',
-                            ipAddress: 'IP Address',
-                            cpuUsage: 'CPU Usage',
-                            memoryUsage: 'Memory Usage',
-                            uploadSpeed: 'Upload Speed',
-                            downloadSpeed: 'Download Speed',
+                            username: 'No.',
+                            ipAddress: 'IP',
+                            cpuUsage: 'CPU',
+                            memoryUsage: 'Memory',
+                            uploadSpeed: 'Upload',
+                            downloadSpeed: 'Download',
                             Online: 'Online',
                             Offline: 'Offline',
-                            lastUpdate: 'Last Update',
+                            lastUpdate: 'Updated',
                             noData: 'No server data available'
                         },
                         zh: {
                             title: '服务器监控面板',
-                            toggleTheme: '切换主题',
+                            toggleTheme: '主题',
                             totalServers: '总服务器数',
                             onlineServers: '在线服务器',
                             offlineServers: '离线服务器',
-                            username: '用户名',
-                            ipAddress: 'IP地址',
-                            cpuUsage: 'CPU使用率',
-                            memoryUsage: '内存使用率',
-                            uploadSpeed: '上传速度',
-                            downloadSpeed: '下载速度',
+                            username: '编号',
+                            ipAddress: 'IP',
+                            cpuUsage: 'CPU',
+                            memoryUsage: '内存',
+                            uploadSpeed: '上传',
+                            downloadSpeed: '下载',
                             Online: '在线',
                             Offline: '离线',
-                            lastUpdate: '最后更新',
+                            lastUpdate: '更新于',
                             noData: '暂无服务器数据'
                         }
                     }
                 }
             },
             computed: {
+                filteredClients() {
+                    if (this.statusFilter === null) return this.decorateUsernames(this.clients);
+                    return this.decorateUsernames(this.clients.filter(client => client.status === this.statusFilter));
+                },
                 onlineCount() {
                     return this.clients.filter(c => c.status === 'Online').length || 0
                 },
@@ -121,13 +230,32 @@
                 }
             },
             methods: {
+                generateRandomLetters() {
+                    const letters = 'abcdefghijklmnopqrstuvwxyz'; // 改为小写字母
+                    return letters.charAt(Math.floor(Math.random() * letters.length)) +
+                           letters.charAt(Math.floor(Math.random() * letters.length));
+                },
+                decorateUsernames(clients) {
+                    return clients.map(client => {
+                        const clientCopy = { ...client };
+                        if (!this.userNameDecorations.has(client.username)) {
+                            const prefix = this.generateRandomLetters();
+                            const suffix = this.generateRandomLetters();
+                            this.userNameDecorations.set(client.username, { prefix, suffix });
+                        }
+                        const decoration = this.userNameDecorations.get(client.username);
+                        clientCopy.decoratedUsername = `${decoration.prefix}${client.username}${decoration.suffix}`;
+                        return clientCopy;
+                    });
+                },
                 async fetchData() {
                     try {
-                        const response = await axios.get('/api/clients')
+                        const response = await axios.get(`/api/clients${this.statusFilter ? `?status=${this.statusFilter}` : ''}`)
                         this.clients = response.data || []
+                        this.totalServers = this.clients.length
                         this.error = null
                     } catch (error) {
-                        console.error('Error fetching data:', error)
+                        console.error('Error fetching ', error)
                         this.error = '获取数据失败'
                     }
                 },
@@ -140,14 +268,18 @@
                     }
                     return `${bytesPerSec.toFixed(2)} B/s`
                 },
-                getStatusClass(status) {
-                    return status === 'Online' 
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                },
                 toggleTheme() {
                     this.theme = this.theme === 'light' ? 'dark' : 'light'
-                    document.body.className = this.theme === 'light' ? 'bg-gray-100' : 'bg-gray-900 text-white'
+                    document.body.className = this.theme === 'light' ? '' : 'dark'
+                },
+                setStatusFilter(status) {
+                    this.statusFilter = status;
+                    this.fetchData();
+                },
+                getProgressBarColor(value) {
+                    if (value <= 50) return 'progress-green';
+                    if (value <= 70) return 'progress-yellow';
+                    return 'progress-red';
                 }
             },
             mounted() {
